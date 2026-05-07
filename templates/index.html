@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Code Manager Studio Pro v2</title>
+    <!-- CDN links -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Project static files -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+</head>
+<body>
+    <!-- Theme toggle -->
+    <button id="theme-toggle" aria-label="Toggle dark/light theme">
+        <i class="fas fa-moon"></i>
+    </button>
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+        <div class="sidebar-header">
+            <h1><i class="fas fa-robot"></i> AI Code Manager</h1>
+            <button id="new-project-btn" class="btn btn-primary">
+                <i class="fas fa-plus"></i> New Project
+            </button>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="search-sessions" placeholder="Search sessions..." aria-label="Search sessions">
+            <i class="fas fa-search"></i>
+        </div>
+
+        <nav id="session-list">
+            <h2>Sessions</h2>
+            <ul>
+                {% for session in sessions %}
+                <li class="session-item {% if session.id == current_session_id %}active{% endif %}"
+                    data-session-id="{{ session.id }}">
+                    <span class="session-name">{{ session.name }}</span>
+                    <span class="session-date">{{ session.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+    </aside>
+
+    <!-- Main area -->
+    <main id="main-content">
+        <!-- Wizard steps -->
+        <div class="wizard-steps">
+            <div class="step-indicator">
+                <div class="step {% if current_step >= 1 %}active{% endif %}" data-step="1">Input</div>
+                <div class="step {% if current_step >= 2 %}active{% endif %}" data-step="2">Plan</div>
+                <div class="step {% if current_step >= 3 %}active{% endif %}" data-step="3">Generate</div>
+                <div class="step {% if current_step >= 4 %}active{% endif %}" data-step="4">Push</div>
+            </div>
+
+            <!-- Step 1: Input -->
+            <section id="step-input" class="step-content {% if current_step == 1 %}visible{% endif %}">
+                <h2>Project Input</h2>
+                <form id="input-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-group">
+                        <label for="project-name">Project Name</label>
+                        <input type="text" id="project-name" name="project_name" value="{{ project_name }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="project-description">Description</label>
+                        <textarea id="project-description" name="project_description" rows="5">{{ project_description }}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="technologies">Technologies (comma separated)</label>
+                        <input type="text" id="technologies" name="technologies" value="{{ technologies }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Generate Plan</button>
+                </form>
+            </section>
+
+            <!-- Step 2: Plan -->
+            <section id="step-plan" class="step-content {% if current_step == 2 %}visible{% endif %}">
+                <h2>Project Plan</h2>
+                <div class="plan-container">
+                    <pre><code class="language-markdown" id="plan-content">{{ plan_content }}</code></pre>
+                </div>
+                <div class="plan-actions">
+                    <button id="edit-plan-btn" class="btn btn-secondary"><i class="fas fa-edit"></i> Edit</button>
+                    <button id="confirm-plan-btn" class="btn btn-primary"><i class="fas fa-check"></i> Confirm & Generate</button>
+                </div>
+            </section>
+
+            <!-- Step 3: Generate -->
+            <section id="step-generate" class="step-content {% if current_step == 3 %}visible{% endif %}">
+                <h2>Generating Code</h2>
+                <div id="generation-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div id="generation-log" class="log-container">
+                        <!-- SSE logs will be inserted here -->
+                        {% for log in generation_logs %}
+                        <p>{{ log }}</p>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div id="generation-actions" class="hidden">
+                    <button id="download-zip-btn" class="btn btn-primary"><i class="fas fa-download"></i> Download ZIP</button>
+                    <button id="proceed-push-btn" class="btn btn-secondary"><i class="fas fa-cloud-upload-alt"></i> Go to Push</button>
+                </div>
+            </section>
+
+            <!-- Step 4: Push -->
+            <section id="step-push" class="step-content {% if current_step == 4 %}visible{% endif %}">
+                <h2>Push to GitHub</h2>
+                <form id="push-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-group">
+                        <label for="repo-name">Repository Name</label>
+                        <input type="text" id="repo-name" name="repo_name" value="{{ repo_name }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="commit-message">Commit Message</label>
+                        <input type="text" id="commit-message" name="commit_message" value="Initial commit - AI generated">
+                    </div>
+                    <div class="form-group">
+                        <label for="github-token">GitHub Token (optional, stored securely)</label>
+                        <input type="password" id="github-token" name="github_token">
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="fab fa-github"></i> Push to GitHub</button>
+                </form>
+                <div id="push-result" class="hidden">
+                    <!-- Result message here -->
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Modal for editing plan -->
+    <div id="edit-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Plan</h2>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="edit-plan-textarea" rows="20" style="width:100%; font-family: monospace;">{{ plan_content }}</textarea>
+            </div>
+            <div class="modal-footer">
+                <button id="save-plan-btn" class="btn btn-primary">Save</button>
+                <button class="btn btn-secondary modal-close">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden container for streaming data -->
+    <div id="sse-container" data-url="{{ url_for('stream') }}" style="display:none;"></div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        // Initialize highlight.js
+        document.addEventListener('DOMContentLoaded', (event) => {
+            document.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightBlock(block);
+            });
+        });
+
+        // Theme toggle
+        const themeToggle = document.getElementById('theme-toggle');
+        const body = document.body;
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-theme');
+            const icon = themeToggle.querySelector('i');
+            if (body.classList.contains('dark-theme')) {
+                icon.className = 'fas fa-sun';
+            } else {
+                icon.className = 'fas fa-moon';
+            }
+        });
+
+        // Modal handling
+        const modal = document.getElementById('edit-modal');
+        const editBtn = document.getElementById('edit-plan-btn');
+        const closeBtns = document.querySelectorAll('.modal-close');
+        const saveBtn = document.getElementById('save-plan-btn');
+        const textarea = document.getElementById('edit-plan-textarea');
+
+        editBtn.addEventListener('click', () => {
+            modal.classList.remove('hidden');
+            textarea.value = document.getElementById('plan-content').innerText;
+        });
+
+        closeBtns.forEach(btn => {
+            btn.addEventListener('click', () => modal.classList.add('hidden'));
+        });
+
+        saveBtn.addEventListener('click', () => {
+            document.getElementById('plan-content').innerText = textarea.value;
+            // Re-highlight
+            hljs.highlightBlock(document.getElementById('plan-content'));
+            modal.classList.add('hidden');
+        });
+
+        // Click outside modal to close
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
